@@ -1,11 +1,4 @@
-use alloc::string::String;
 use serde::{Serialize, Deserialize, de::DeserializeOwned};
-
-#[derive(Deserialize)]
-pub struct Access {
-    pub secret_id: String,
-    pub secret_key: String,
-}
 
 pub trait Service {
     const SERVICE: &'static str;

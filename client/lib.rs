@@ -1,5 +1,13 @@
+#![no_std]
+extern crate alloc;
 use alloc::{string::{String, ToString}, format};
-use crate::model::*;
+use tcapi_model::model::*;
+
+#[derive(serde::Deserialize)]
+pub struct Access {
+    pub secret_id: String,
+    pub secret_key: String,
+}
 
 fn timestamp_to_date(timestamp: i64) -> String {
     let datetime = chrono::DateTime::from_timestamp(timestamp, 0).unwrap();
