@@ -1,0 +1,18 @@
+[package]
+name = "tcapi-ureq-example"
+version = "0.1.0"
+edition = "2021"
+authors = ["stackinspector"]
+license = "MPL-2.0"
+repository = "https://github.com/Berylsoft/tcapi"
+
+[lib]
+path = "lib.rs"
+name = "tcapi_ureq_example"
+
+[dependencies]
+tcapi-model = { path = "../model" }
+tcapi-client = { path = "../client" }
+http = "1.1"
+serde_json = "1.0"
+ureq = { version = "2.10", features = ["http-crate"] }
