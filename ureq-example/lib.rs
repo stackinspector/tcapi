@@ -13,15 +13,7 @@ pub fn now() -> i64 {
 }
 
 pub fn ureq(req: http::Request<String>) -> Box<dyn std::io::Read + Send + Sync + 'static> {
-    let (mut http_parts, body) = req.into_parts();
-    let host = http_parts.headers.get(http::header::HOST).unwrap().to_str().unwrap();
-    let uri_parts = http_parts.uri.into_parts();
-    http_parts.uri = http::Uri::builder()
-        .scheme(uri_parts.scheme.unwrap_or(http::uri::Scheme::HTTPS))
-        .authority(uri_parts.authority.unwrap_or(host.try_into().unwrap()))
-        .path_and_query(uri_parts.path_and_query.unwrap())
-        .build()
-        .unwrap();
+    let (http_parts, body) = req.into_parts();
     let request: ureq::Request = http_parts.into();
     request.send_string(&body).unwrap().into_reader()
 }

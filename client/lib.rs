@@ -129,11 +129,16 @@ pub fn build_request<A: Action>(
 
     let authorization = format!("{algorithm} Credential={secret_id}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}");
 
+    let uri = http::Uri::builder()
+        .scheme(http::uri::Scheme::HTTPS)
+        .authority(host)
+        .path_and_query(canonical_uri)
+        .build().unwrap();
     let mut request = http::Request::builder()
         .method(match A::STYLE {
             Style::PostJson => http::Method::POST,
         })
-        .uri(canonical_uri);
+        .uri(uri);
 
     headers! {
         request;
