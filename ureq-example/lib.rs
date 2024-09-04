@@ -25,7 +25,7 @@ use tcapi_model::model::*;
 use tcapi_client::*;
 
 pub fn tcapi_req<R: Action>(payload: R, access: &Access) -> R::Res {
-    let req = build_request(&payload, now(), &access, None);
+    let req = build_request(&payload, now(), access, None);
     println!("{:?}", req);
     let res = ureq(req);
     let res: ResponseWrapper<R::Res> = serde_json::from_reader(res).unwrap();

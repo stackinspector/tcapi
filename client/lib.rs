@@ -3,10 +3,45 @@ extern crate alloc;
 use alloc::{string::{String, ToString}, format};
 use tcapi_model::model::*;
 
+pub struct KeyStorage {
+    buf: String,
+}
+
+impl KeyStorage {
+    /// SAFETY: buf should zeroize after read
+    pub fn from_str_conditional(s: &str) -> KeyStorage {
+        let buf = format!("TC3{s}");
+        KeyStorage { buf }
+    }
+
+    pub fn from_string(mut s: String) -> KeyStorage {
+        let _self = KeyStorage::from_str_conditional(s.as_str());
+        zeroize::Zeroize::zeroize(&mut s);
+        _self
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.buf
+    }
+}
+
+impl Drop for KeyStorage {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.buf);
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for KeyStorage {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // TODO avoid twice buf creation
+        String::deserialize(deserializer).map(KeyStorage::from_string)
+    }
+}
+
 #[derive(serde::Deserialize)]
 pub struct Access {
     pub secret_id: String,
-    pub secret_key: String,
+    pub secret_key: KeyStorage,
 }
 
 fn timestamp_to_date(timestamp: i64) -> String {
@@ -89,7 +124,7 @@ pub fn build_request<A: Action>(
     let date = timestamp_to_date(timestamp);
 
     let http_request_method = match A::STYLE {
-        Style::PostJson => "POST",
+        Style::PostJson => http::Method::POST,
     };
     let canonical_uri = "/";
     let canonical_querystring = match A::STYLE {
@@ -105,7 +140,7 @@ pub fn build_request<A: Action>(
     let signed_headers = "content-type;host;x-tc-action";
     let hashed_request_payload = hex_buf.hex(sha256(&payload));
     let canonical_request = [
-        http_request_method,
+        http_request_method.as_str(),
         canonical_uri,
         canonical_querystring,
         canonical_headers.as_str(),
@@ -122,7 +157,7 @@ pub fn build_request<A: Action>(
         hashed_canonical_request,
     ].join("\n");
 
-    let secret_date = hmac_sha256(format!("TC3{secret_key}"), date);
+    let secret_date = hmac_sha256(secret_key.as_str(), date);
     let secret_service = hmac_sha256(secret_date, service);
     let secret_signing = hmac_sha256(secret_service, "tc3_request");
     let signature = hex_buf.hex(hmac_sha256(secret_signing, string_to_sign));
@@ -134,11 +169,7 @@ pub fn build_request<A: Action>(
         .authority(host)
         .path_and_query(canonical_uri)
         .build().unwrap();
-    let mut request = http::Request::builder()
-        .method(match A::STYLE {
-            Style::PostJson => http::Method::POST,
-        })
-        .uri(uri);
+    let mut request = http::Request::builder().method(http_request_method).uri(uri);
 
     headers! {
         request;
