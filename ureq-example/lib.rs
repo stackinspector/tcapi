@@ -14,8 +14,7 @@ pub fn now() -> i64 {
 
 pub fn ureq(req: http::Request<String>) -> Box<dyn std::io::Read + Send + Sync + 'static> {
     let (http_parts, body) = req.into_parts();
-    let request: ureq::Request = http_parts.into();
-    request.send_string(&body).unwrap().into_reader()
+    ureq::Request::from(http_parts).send_string(&body).unwrap().into_reader()
 }
 
 pub use tcapi_model;
