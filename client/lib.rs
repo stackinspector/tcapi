@@ -77,7 +77,7 @@ pub fn build_request<A: Action>(
 ) -> http::Request<String> {
     let mut hex_buf = HexBuf::<{ SHA256_OUT_LEN * 2 }>::new();
     let mut num_buf = itoa::Buffer::new();
-    // TODO guarantees that prev refs are invalidated after next write call
+    // prev refs are invalidated after next write call guaranteed by ownership law
 
     let service = A::Service::SERVICE;
     let host = A::Service::HOST;
