@@ -1,6 +1,23 @@
 #![no_std]
-use heapless::String as AString;
+
 use tcapi_model::model::*;
+
+use heapless::String as AString;
+
+struct AFString<const LEN: usize> {
+    buf: AString<LEN>,
+}
+
+impl<const LEN: usize> AFString<LEN> {
+    fn new() -> AFString<LEN> {
+        AFString { buf: AString::new() }
+    }
+
+    fn format(&mut self, fmt: core::fmt::Arguments) -> &str {
+        core::fmt::Write::write_fmt(&mut self.buf, fmt).unwrap();
+        &self.buf
+    }
+}
 
 const SECRET_ID_LEN: usize = 36;
 const SECRET_KEY_LEN: usize = 32;
@@ -119,7 +136,7 @@ impl<const OUT_LEN: usize> HexBuf<OUT_LEN> {
 
 struct LastDate {
     date_naive: chrono::NaiveDate,
-    formatted: Option<FormatStringBuf<{ "YYYY-mm-dd".len() }>>,
+    formatted: Option<AFString<{ "YYYY-mm-dd".len() }>>,
 }
 
 impl LastDate {
@@ -137,22 +154,7 @@ impl LastDate {
         if self.date_naive != date_naive {
             self.date_naive = date_naive;
         }
-        self.formatted.get_or_insert_with(FormatStringBuf::new).format(format_args!("{}", date_naive.format("%Y-%m-%d")))
-    }
-}
-
-struct FormatStringBuf<const LEN: usize> {
-    buf: AString<LEN>,
-}
-
-impl<const LEN: usize> FormatStringBuf<LEN> {
-    fn new() -> FormatStringBuf<LEN> {
-        FormatStringBuf { buf: AString::new() }
-    }
-
-    fn format(&mut self, fmt: core::fmt::Arguments) -> &str {
-        core::fmt::Write::write_fmt(&mut self.buf, fmt).unwrap();
-        &self.buf
+        self.formatted.get_or_insert_with(AFString::new).format(format_args!("{}", date_naive.format("%Y-%m-%d")))
     }
 }
 
@@ -161,9 +163,9 @@ pub struct LocalClient {
     hex_buf: HexBuf::<{ SHA256_OUT_LEN * 2 }>,
     num_buf: itoa::Buffer,
     last_date: LastDate,
-    canonical_headers_buf: FormatStringBuf<256>, // vary: STYLE && HOST && SERVICE, ~100+bytes
-    credential_scope_buf: FormatStringBuf<26>, // when YYYY-mm-dd
-    authorization_buf: FormatStringBuf<211>, // when YYYY-mm-dd (&& *1 below)
+    canonical_headers_buf: AFString<256>, // vary: STYLE && HOST && SERVICE, ~100+bytes
+    credential_scope_buf: AFString<26>, // when YYYY-mm-dd
+    authorization_buf: AFString<211>, // when YYYY-mm-dd (&& *1 below)
 }
 
 impl LocalClient {
@@ -174,9 +176,9 @@ impl LocalClient {
             hex_buf: HexBuf::new(),
             num_buf: itoa::Buffer::new(),
             last_date: LastDate::new(),
-            canonical_headers_buf: FormatStringBuf::new(),
-            credential_scope_buf: FormatStringBuf::new(),
-            authorization_buf: FormatStringBuf::new(),
+            canonical_headers_buf: AFString::new(),
+            credential_scope_buf: AFString::new(),
+            authorization_buf: AFString::new(),
         }
     }
 
