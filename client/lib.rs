@@ -162,19 +162,18 @@ impl LocalClient {
         }
     }
 
-    pub fn build_request<A: Action>(
+    pub fn build_request<A: Action, P: AsRef<[u8]>>(
         &mut self,
-        payload: &A,
+        serialized_payload: P,
         timestamp: i64,
         region: Option<&str>,
-    ) -> http::Request<String> {
+    ) -> http::Request<P> {
         let Access { secret_id, secret_key } = self.access.as_ref();
 
         let service = A::Service::SERVICE;
         let host = A::Service::HOST;
         let version = A::Service::VERSION;
         let action = A::ACTION;
-        let payload = serde_json::to_string(payload).unwrap();
         let algorithm = "TC3-HMAC-SHA256";
         let timestamp_string = self.num_buf.format(timestamp);
         let date = self.last_date.format(timestamp);
@@ -194,7 +193,7 @@ impl LocalClient {
         let action_lowercase = action.to_ascii_lowercase();
         let canonical_headers = self.canonical_headers_buf.format(format_args!("content-type:{content_type}\nhost:{host}\nx-tc-action:{action_lowercase}\n"));
         let signed_headers = "content-type;host;x-tc-action";
-        let hashed_request_payload = self.hex_buf.format(sha256(&payload));
+        let hashed_request_payload = self.hex_buf.format(sha256(&serialized_payload));
         let canonical_request = [
             http_request_method.as_str(),
             canonical_uri,
@@ -246,6 +245,6 @@ impl LocalClient {
             headers.append("X-TC-Region", header_value!(owned region.unwrap()));
         }
 
-        request.body(payload).unwrap()
+        request.body(serialized_payload).unwrap()
     }
 }

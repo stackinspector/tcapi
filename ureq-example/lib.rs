@@ -35,7 +35,8 @@ impl LocalUreqClient {
     }
 
     pub fn req<R: Action>(&mut self, payload: R) -> R::Res {
-        let req = self.inner.build_request(&payload, now(), None);
+        let serialized_payload = serde_json::to_string(&payload).unwrap();
+        let req = self.inner.build_request::<R, String>(serialized_payload, now(), None);
         println!("{:?}", req);
         let res = ureq(req);
         let res: ResponseWrapper<R::Res> = serde_json::from_reader(res).unwrap();
