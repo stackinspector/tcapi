@@ -1,6 +1,6 @@
 #![no_std]
 extern crate alloc;
-use alloc::{boxed::Box, format, string::{String, ToString}, sync::Arc};
+use alloc::{format, string::String, sync::Arc};
 use tcapi_model::model::*;
 
 pub struct KeyStorage {
@@ -98,7 +98,7 @@ impl<const OUT_LEN: usize> HexBuf<OUT_LEN> {
 
 struct LastDate {
     date_naive: chrono::NaiveDate,
-    formatted: Option<Box<str>>,
+    formatted: Option<FormatStringBuf>,
 }
 
 impl LastDate {
@@ -114,9 +114,8 @@ impl LastDate {
         let date_naive = datetime.date_naive();
         if self.date_naive != date_naive {
             self.date_naive = date_naive;
-            self.formatted = Some(date_naive.format("%Y-%m-%d").to_string().into());
         }
-        self.formatted.as_ref().unwrap()
+        self.formatted.get_or_insert_with(FormatStringBuf::new).format(format_args!("{}", date_naive.format("%Y-%m-%d")))
     }
 }
 
@@ -129,9 +128,9 @@ impl FormatStringBuf {
         FormatStringBuf { buf: String::new() }
     }
 
-    fn with_capacity(capacity: usize) -> FormatStringBuf {
-        FormatStringBuf { buf: String::with_capacity(capacity) }
-    }
+    // fn with_capacity(capacity: usize) -> FormatStringBuf {
+    //     FormatStringBuf { buf: String::with_capacity(capacity) }
+    // }
 
     fn format(&mut self, fmt: core::fmt::Arguments) -> &str {
         core::fmt::Write::write_fmt(&mut self.buf, fmt).unwrap();
