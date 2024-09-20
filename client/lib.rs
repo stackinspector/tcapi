@@ -13,8 +13,25 @@ impl<const LEN: usize> AFString<LEN> {
         AFString { buf: AString::new() }
     }
 
+    fn put_as_mut(&mut self, s: &str) -> &mut str {
+        self.buf.clear();
+        self.buf.push_str(s).unwrap();
+        &mut self.buf
+    }
+
     fn format(&mut self, fmt: core::fmt::Arguments) -> &str {
+        self.buf.clear();
         core::fmt::Write::write_fmt(&mut self.buf, fmt).unwrap();
+        &self.buf
+    }
+
+    fn join_lines<const N: usize>(&mut self, lines: [&str; N]) -> &str {
+        self.buf.clear();
+        for line in lines {
+            self.buf.push_str(line).unwrap();
+            self.buf.push_str("\n").unwrap();
+        }
+        self.buf.pop();
         &self.buf
     }
 }
@@ -163,9 +180,12 @@ pub struct LocalClient {
     hex_buf: HexBuf::<{ SHA256_OUT_LEN * 2 }>,
     num_buf: itoa::Buffer,
     last_date: LastDate,
+    action_lowercase_buf: AFString<64>, // vary: ACTION
     canonical_headers_buf: AFString<256>, // vary: STYLE && HOST && SERVICE, ~100+bytes
-    credential_scope_buf: AFString<26>, // when YYYY-mm-dd
-    authorization_buf: AFString<211>, // when YYYY-mm-dd (&& *1 below)
+    credential_scope_buf: AFString<32>, // 26 when YYYY-mm-dd
+    authorization_buf: AFString<256>, // 211 when YYYY-mm-dd (&& *1 below)
+    canonical_request_buf: AFString<512>, // vary: STYLE && HOST && SERVICE && ACTION, ~200+bytes
+    string_to_sign_buf: AFString<128>, // 118 when YYYY-mm-dd && dec timestamp 10 digits
 }
 
 impl LocalClient {
@@ -176,9 +196,12 @@ impl LocalClient {
             hex_buf: HexBuf::new(),
             num_buf: itoa::Buffer::new(),
             last_date: LastDate::new(),
+            action_lowercase_buf: AFString::new(),
             canonical_headers_buf: AFString::new(),
             credential_scope_buf: AFString::new(),
             authorization_buf: AFString::new(),
+            canonical_request_buf: AFString::new(),
+            string_to_sign_buf: AFString::new(),
         }
     }
 
@@ -210,27 +233,28 @@ impl LocalClient {
             Style::PostJson => "application/json; charset=utf-8",
         };
         // TODO wait for feature(generic_const_exprs)
-        let action_lowercase = action.to_ascii_lowercase();
+        let action_lowercase = self.action_lowercase_buf.put_as_mut(action);
+        action_lowercase.make_ascii_lowercase();
         let canonical_headers = self.canonical_headers_buf.format(format_args!("content-type:{content_type}\nhost:{host}\nx-tc-action:{action_lowercase}\n"));
         let signed_headers = "content-type;host;x-tc-action"; // only if Style::PostJson ? *1
         let hashed_request_payload = self.hex_buf.format(sha256(&serialized_payload));
-        let canonical_request = [
+        let canonical_request = self.canonical_request_buf.join_lines([
             http_request_method.as_str(),
             canonical_uri,
             canonical_querystring,
             canonical_headers,
             signed_headers,
             hashed_request_payload,
-        ].join("\n");
+        ]);
 
         let credential_scope = self.credential_scope_buf.format(format_args!("{date}/{service}/tc3_request"));
         let hashed_canonical_request = self.hex_buf.format(sha256(canonical_request));
-        let string_to_sign = [
+        let string_to_sign = self.string_to_sign_buf.join_lines([
             algorithm,
             timestamp_string,
             credential_scope,
             hashed_canonical_request,
-        ].join("\n");
+        ]);
 
         let secret_date = hmac_sha256(secret_key.as_str(), date);
         let secret_service = hmac_sha256(secret_date, service);
