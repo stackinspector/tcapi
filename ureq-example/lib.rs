@@ -17,8 +17,6 @@ pub fn ureq(req: http::Request<String>) -> Box<dyn std::io::Read + Send + Sync +
     ureq::Request::from(http_parts).send_string(&body).unwrap().into_reader()
 }
 
-use std::sync::Arc;
-
 pub use tcapi_model;
 pub use tcapi_client;
 
@@ -30,7 +28,7 @@ pub struct LocalUreqClient {
 }
 
 impl LocalUreqClient {
-    pub fn new(access: Arc<Access>) -> LocalUreqClient {
+    pub fn new(access: Access) -> LocalUreqClient {
         LocalUreqClient { inner: LocalClient::new(access) }
     }
 

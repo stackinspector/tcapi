@@ -1,27 +1,28 @@
 #![no_std]
-extern crate alloc;
-use alloc::{format, string::String, sync::Arc};
+use heapless::String as AString;
 use tcapi_model::model::*;
 
+const SECRET_ID_LEN: usize = 36;
+const SECRET_KEY_LEN: usize = 32;
+const SECRET_KEY_PREFIX: &str = "TC3";
+const SECRET_KEY_PREFIX_LEN: usize = SECRET_KEY_PREFIX.len();
+const SECRET_KEY_FULL_LEN: usize = SECRET_KEY_LEN + SECRET_KEY_PREFIX_LEN;
+
 pub struct KeyStorage {
-    buf: String,
+    buf: [u8; SECRET_KEY_FULL_LEN],
 }
 
 impl KeyStorage {
     /// SAFETY: buf should zeroize after read
     pub fn from_str_conditional(s: &str) -> KeyStorage {
-        let buf = format!("TC3{s}");
+        let mut buf = [0; SECRET_KEY_FULL_LEN];
+        buf[..SECRET_KEY_PREFIX_LEN].copy_from_slice(SECRET_KEY_PREFIX.as_bytes());
+        buf[SECRET_KEY_PREFIX_LEN..].copy_from_slice(s.as_bytes());
         KeyStorage { buf }
     }
 
-    pub fn from_string(mut s: String) -> KeyStorage {
-        let _self = KeyStorage::from_str_conditional(s.as_str());
-        zeroize::Zeroize::zeroize(&mut s);
-        _self
-    }
-
     pub fn as_str(&self) -> &str {
-        &self.buf
+        core::str::from_utf8(&self.buf).unwrap()
     }
 }
 
@@ -33,14 +34,34 @@ impl Drop for KeyStorage {
 
 impl<'de> serde::Deserialize<'de> for KeyStorage {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // TODO avoid twice buf creation
-        String::deserialize(deserializer).map(KeyStorage::from_string)
+        struct ValueVisitor<'de>(core::marker::PhantomData<&'de ()>);
+
+        impl<'de> serde::de::Visitor<'de> for ValueVisitor<'de> {
+            type Value = KeyStorage;
+
+            fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                write!(formatter, "a string no more than {} bytes long", SECRET_KEY_LEN as u64)
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v.len() != SECRET_KEY_LEN {
+                    Err(E::invalid_length(v.len(), &self))
+                } else {
+                    Ok(KeyStorage::from_str_conditional(v))
+                }
+            }
+        }
+
+        deserializer.deserialize_str(ValueVisitor::<'de>(Default::default()))
     }
 }
 
 #[derive(serde::Deserialize)]
 pub struct Access {
-    pub secret_id: String,
+    pub secret_id: AString<SECRET_ID_LEN>,
     pub secret_key: KeyStorage,
 }
 
@@ -98,7 +119,7 @@ impl<const OUT_LEN: usize> HexBuf<OUT_LEN> {
 
 struct LastDate {
     date_naive: chrono::NaiveDate,
-    formatted: Option<FormatStringBuf>,
+    formatted: Option<FormatStringBuf<{ "YYYY-mm-dd".len() }>>,
 }
 
 impl LastDate {
@@ -112,6 +133,7 @@ impl LastDate {
     fn format(&mut self, timestamp: i64) -> &str {
         let datetime = chrono::DateTime::from_timestamp(timestamp, 0).unwrap();
         let date_naive = datetime.date_naive();
+        assert!(matches!(chrono::Datelike::year(&date_naive), 0..9999));
         if self.date_naive != date_naive {
             self.date_naive = date_naive;
         }
@@ -119,18 +141,14 @@ impl LastDate {
     }
 }
 
-struct FormatStringBuf {
-    buf: String,
+struct FormatStringBuf<const LEN: usize> {
+    buf: AString<LEN>,
 }
 
-impl FormatStringBuf {
-    fn new() -> FormatStringBuf {
-        FormatStringBuf { buf: String::new() }
+impl<const LEN: usize> FormatStringBuf<LEN> {
+    fn new() -> FormatStringBuf<LEN> {
+        FormatStringBuf { buf: AString::new() }
     }
-
-    // fn with_capacity(capacity: usize) -> FormatStringBuf {
-    //     FormatStringBuf { buf: String::with_capacity(capacity) }
-    // }
 
     fn format(&mut self, fmt: core::fmt::Arguments) -> &str {
         core::fmt::Write::write_fmt(&mut self.buf, fmt).unwrap();
@@ -139,17 +157,17 @@ impl FormatStringBuf {
 }
 
 pub struct LocalClient {
-    access: Arc<Access>,
+    access: Access,
     hex_buf: HexBuf::<{ SHA256_OUT_LEN * 2 }>,
     num_buf: itoa::Buffer,
     last_date: LastDate,
-    canonical_headers_buf: FormatStringBuf,
-    credential_scope_buf: FormatStringBuf,
-    authorization_buf: FormatStringBuf,
+    canonical_headers_buf: FormatStringBuf<256>, // vary: STYLE && HOST && SERVICE, ~100+bytes
+    credential_scope_buf: FormatStringBuf<26>, // when YYYY-mm-dd
+    authorization_buf: FormatStringBuf<211>, // when YYYY-mm-dd (&& *1 below)
 }
 
 impl LocalClient {
-    pub fn new(access: Arc<Access>) -> LocalClient {
+    pub fn new(access: Access) -> LocalClient {
         LocalClient {
             access,
             // prev refs are invalidated after next write call guaranteed by ownership law
@@ -168,7 +186,7 @@ impl LocalClient {
         timestamp: i64,
         region: Option<&str>,
     ) -> http::Request<P> {
-        let Access { secret_id, secret_key } = self.access.as_ref();
+        let Access { secret_id, secret_key } = &self.access;
 
         let service = A::Service::SERVICE;
         let host = A::Service::HOST;
@@ -192,7 +210,7 @@ impl LocalClient {
         // TODO wait for feature(generic_const_exprs)
         let action_lowercase = action.to_ascii_lowercase();
         let canonical_headers = self.canonical_headers_buf.format(format_args!("content-type:{content_type}\nhost:{host}\nx-tc-action:{action_lowercase}\n"));
-        let signed_headers = "content-type;host;x-tc-action";
+        let signed_headers = "content-type;host;x-tc-action"; // only if Style::PostJson ? *1
         let hashed_request_payload = self.hex_buf.format(sha256(&serialized_payload));
         let canonical_request = [
             http_request_method.as_str(),
