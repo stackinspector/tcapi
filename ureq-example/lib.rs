@@ -17,16 +17,28 @@ pub fn ureq(req: http::Request<String>) -> Box<dyn std::io::Read + Send + Sync +
     ureq::Request::from(http_parts).send_string(&body).unwrap().into_reader()
 }
 
+use std::sync::Arc;
+
 pub use tcapi_model;
 pub use tcapi_client;
 
 use tcapi_model::model::*;
 use tcapi_client::*;
 
-pub fn tcapi_req<R: Action>(payload: R, access: &Access) -> R::Res {
-    let req = build_request(&payload, now(), access, None);
-    println!("{:?}", req);
-    let res = ureq(req);
-    let res: ResponseWrapper<R::Res> = serde_json::from_reader(res).unwrap();
-    res.response
+pub struct LocalUreqClient {
+    inner: LocalClient,
+}
+
+impl LocalUreqClient {
+    pub fn new(access: Arc<Access>) -> LocalUreqClient {
+        LocalUreqClient { inner: LocalClient::new(access) }
+    }
+
+    pub fn req<R: Action>(&mut self, payload: R) -> R::Res {
+        let req = self.inner.build_request(&payload, now(), None);
+        println!("{:?}", req);
+        let res = ureq(req);
+        let res: ResponseWrapper<R::Res> = serde_json::from_reader(res).unwrap();
+        res.response
+    }
 }
