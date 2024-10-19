@@ -1,3 +1,5 @@
+#![deny(unused_results)]
+
 pub fn now() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     let res = SystemTime::now().duration_since(UNIX_EPOCH);

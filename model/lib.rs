@@ -1,3 +1,5 @@
+#![deny(unused_results)]
+
 #![no_std]
 extern crate alloc;
 

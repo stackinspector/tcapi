@@ -1,3 +1,5 @@
+#![deny(unused_results)]
+
 #![no_std]
 
 use tcapi_model::model::*;
@@ -27,11 +29,14 @@ impl<const LEN: usize> AFString<LEN> {
 
     fn join_lines<const N: usize>(&mut self, lines: [&str; N]) -> &str {
         self.buf.clear();
-        for line in lines {
-            self.buf.push_str(line).unwrap();
-            self.buf.push_str("\n").unwrap();
+        let mut lines = lines.into_iter();
+        if let Some(first) = lines.next() {
+            self.buf.push_str(first).unwrap();
+            for line in lines {
+                self.buf.push_str("\n").unwrap();
+                self.buf.push_str(line).unwrap();
+            }
         }
-        self.buf.pop();
         &self.buf
     }
 }
@@ -131,8 +136,8 @@ macro_rules! headers {
         custom {$($k2:expr => $t2:tt $v2:expr;)*}
     ) => {{
         let headers = $request.headers_mut().unwrap();
-        $(headers.append(http::header::$k1, header_value!($t1 $v1));)*
-        $(headers.append($k2, header_value!($t2 $v2));)*
+        $(assert_eq!(headers.append(http::header::$k1, header_value!($t1 $v1)), false);)*
+        $(assert_eq!(headers.append($k2, header_value!($t2 $v2)), false);)*
     }};
 }
 
@@ -286,7 +291,7 @@ impl LocalClient {
 
         if A::REGION {
             let headers = request.headers_mut().unwrap();
-            headers.append("X-TC-Region", header_value!(owned region.unwrap()));
+            assert_eq!(headers.append("X-TC-Region", header_value!(owned region.unwrap())), false);
         }
 
         request.body(serialized_payload).unwrap()
