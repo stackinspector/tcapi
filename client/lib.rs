@@ -136,8 +136,8 @@ macro_rules! headers {
         custom {$($k2:expr => $t2:tt $v2:expr;)*}
     ) => {{
         let headers = $request.headers_mut().unwrap();
-        $(assert_eq!(headers.append(http::header::$k1, header_value!($t1 $v1)), false);)*
-        $(assert_eq!(headers.append($k2, header_value!($t2 $v2)), false);)*
+        $(assert!(!headers.append(http::header::$k1, header_value!($t1 $v1)));)*
+        $(assert!(!headers.append($k2, header_value!($t2 $v2)));)*
     }};
 }
 
@@ -291,7 +291,7 @@ impl LocalClient {
 
         if A::REGION {
             let headers = request.headers_mut().unwrap();
-            assert_eq!(headers.append("X-TC-Region", header_value!(owned region.unwrap())), false);
+            assert!(!headers.append("X-TC-Region", header_value!(owned region.unwrap())));
         }
 
         request.body(serialized_payload).unwrap()
